@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Revoltijo — Juego de Cartas</title>
+<title>Revoltijo para Miriams y Maggies 👵</title>
 <style>
   :root{ --azul:#0a2342; --cardW:60px; --cardH:86px; }
   *{box-sizing:border-box}
@@ -12,11 +12,10 @@
   header h1 {margin:0;font-size:18px;}
   .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
   .controls label{display:flex;gap:6px;align-items:center}
-  .controls input,.controls select{height:28px;padding:2px 6px;border-radius:6px;border:1px solid #97adc7}
+  .controls input{height:28px;padding:2px 6px;border-radius:6px;border:1px solid #97adc7;width:60px;text-align:center}
   .controls button{background:#103b73;color:#fff;border:0;border-radius:8px;padding:6px 10px;cursor:pointer}
   .controls button:disabled{opacity:.5;cursor:not-allowed}
   main {display:flex;min-height:calc(100vh - 56px);} 
-  aside {width:300px;border-right:1px solid #ccd6e0;padding:12px;overflow:auto;background:#f0f4fa;}
   .table-area {flex:1;display:flex;flex-direction:column;background:#0c6a0c;position:relative;min-height:60vh}
   #playersBar{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:rgba(255,255,255,.18);backdrop-filter:saturate(130%) blur(2px);border-bottom:1px solid rgba(255,255,255,.25);}  
   .chip{display:flex;align-items:center;gap:6px;background:#f8faff;color:var(--azul);border:1px solid var(--azul);border-radius:999px;padding:4px 10px;box-shadow:0 1px 0 rgba(0,0,0,.15)}
@@ -26,18 +25,18 @@
   .cards {display:flex;flex-wrap:wrap;gap:4px;justify-content:center;max-width:360px}
   .card {width:var(--cardW);height:var(--cardH);background:#fff;border:1px solid var(--azul);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:2px;font-weight:700;cursor:grab;user-select:none;box-shadow:0 2px 0 rgba(0,0,0,.25);} 
   .card.red{color:#c00}
-  .card.selected{outline:3px solid #ff9800; outline-offset:1px}
+  .card.selected{outline:3px solid #ff9800; outline-offset:1px; border-color:#ff9800; box-shadow:0 0 0 3px rgba(255,152,0,.35), inset 0 0 0 2px rgba(255,152,0,.55);} 
   .hand {background:#f8faff;border-top:2px solid var(--azul);padding:10px;position:sticky;bottom:0}
   .hand-cards {display:flex;flex-wrap:nowrap;gap:6px;justify-content:flex-start;overflow-x:auto;padding-bottom:6px}
   #newGroupTile{background:rgba(255,255,255,0.85);border:2px dashed var(--azul);border-radius:12px;padding:12px 14px;min-width:180px;text-align:center;font-size:12px;color:#123}
   .hint {font-size:12px;color:#345}
+  aside {width:300px;border-left:1px solid #ccd6e0;padding:12px;overflow:auto;background:#f0f4fa;}
+  #logPanel{font-size:12px;height:120px;overflow:auto;border:1px solid #ccd;background:#fff;}
 
-  /* Responsivo */
-  @media (max-width: 1024px){ :root{ --cardW:64px; --cardH:92px; } }
-  @media (max-width: 840px){
+  /* Responsivo: panel de mensajes al fondo */
+  @media (max-width: 900px){
     main{flex-direction:column;min-height:100vh}
-    aside{width:100%;border-right:0;border-bottom:1px solid #ccd6e0}
-    #groups{padding:10px}
+    aside{order:3;width:100%;border:0;border-top:1px solid #ccd6e0;max-height:180px}
     :root{ --cardW:68px; --cardH:98px; }
   }
   @media (max-width: 520px){
@@ -47,30 +46,24 @@
     .controls button{padding:6px 8px}
     :root{ --cardW:72px; --cardH:102px; }
     .group-header{font-size:11px}
+    aside{max-height:150px}
   }
 </style>
 </head>
 <body>
 <header>
-  <h1>Revoltijo — Juego</h1>
+  <h1>Revoltijo para Miriams y Maggies 👵</h1>
   <div class="controls">
-    <label>Jugadores: <input id="playersInput" type="number" min="2" max="6" value="3" style="width:60px"></label>
-    <label>Computadora(s): <input id="botsInput" type="number" min="0" max="5" value="2" style="width:60px"></label>
-    <label>Mazos: 
-      <select id="decksInput"><option value="1" selected>1</option><option value="2">2</option></select>
-    </label>
+    <label>Computadora(s): <input id="botsInput" type="number" min="1" max="5" value="2"></label>
     <button id="newGameBtn">Nueva partida</button>
     <button id="groupBtn">Agrupar seleccionadas</button>
+    <button id="undoBtn">Deshacer último grupo</button>
     <button id="hintBtn">Sugerir jugada</button>
     <button id="endTurnBtn">Terminar turno</button>
+    <button id="showInstrBtn">Instrucciones</button>
   </div>
 </header>
 <main>
-  <aside>
-    <h3>Mensajes</h3>
-    <div id="logPanel" style="font-size:12px;height:180px;overflow:auto;border:1px solid #ccd;background:#fff;"></div>
-    <p class="hint"></p>
-  </aside>
   <section class="table-area">
     <div id="playersBar"></div>
     <div id="groups">
@@ -80,60 +73,92 @@
       <div><strong id="playerLabel">Jugador 1</strong> — Tu mano (<span id="handCount">0</span>)</div>
       <div class="hand-cards" id="handCards"></div>
     </div>
+    <div id="instrPanel" style="display:none;padding:10px;background:#f8faff;border-top:1px solid #ccd">
+      <strong>Reglas e instrucciones</strong><br>
+      • 2 mazos. 12 cartas por jugador. Selecciona CPUs y crea partida.<br>
+      • Entra bajando 3 cartas propias (trío/escala).<br>
+      • Límite por turno: 3 cartas jugadas <em>desde tu mano</em> (no cuentan las que retiraste de la mesa este turno).<br>
+      • Puedes mover cartas entre grupos. Sets se pueden unificar arrastrando un set sobre otro del mismo número.<br>
+      • En <b>escalas</b>, puedes tomar de los <em>extremos</em> y también continuar alrededor de A (p.ej. J-Q-K-A-2-3).<br>
+      • En <b>tríos/cuartetos</b>, puedes tomar cualquiera si el grupo restante sigue válido (≥3).<br>
+      • Si tomas cartas de la mesa, debes usarlas en el mismo turno o no podrás terminar.
+    </div>
   </section>
+  <aside>
+    <h3>Mensajes</h3>
+    <div id="logPanel"></div>
+  </aside>
 </main>
+<canvas id="confettiCanvas" style="position:fixed;top:0;left:0;pointer-events:none;width:100%;height:100%;"></canvas>
+<div id="granny" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border:3px solid var(--azul);padding:20px;border-radius:12px;z-index:99;text-align:center;min-width:260px">
+  <div style="font-size:54px;line-height:1.1">👵</div>
+  <h2 style="margin:6px 0 0 0;">¡Felicidades Moñoño!</h2>
+</div>
 <script>
 // ====== Logger ======
 function log(m){ const el=document.getElementById('logPanel'); if(el){ const ts=new Date().toLocaleTimeString(); el.innerHTML = `<div>[${ts}] ${m}</div>` + el.innerHTML; } try{ console.log(m); }catch(e){} }
 
+// ====== Confetti & Granny ======
+const grannyNode = document.getElementById('granny');
+const confettiCanvas = document.getElementById('confettiCanvas');
+let confettiAnimating=false;
+function showGranny(msg, happy=true){
+  grannyNode.querySelector('h2').textContent = msg;
+  grannyNode.style.display='block';
+  if(happy){ startConfetti(); } else { stopConfetti(); }
+}
+function startConfetti(){
+  const c=confettiCanvas; const ctx=c.getContext('2d');
+  c.width=window.innerWidth; c.height=window.innerHeight;
+  const pieces=Array.from({length:200},()=>({x:Math.random()*c.width,y:Math.random()*c.height,dy:2+Math.random()*3,color:`hsl(${Math.random()*360},100%,50%)`}));
+  confettiAnimating=true;
+  (function draw(){ if(!confettiAnimating) return; ctx.clearRect(0,0,c.width,c.height); pieces.forEach(p=>{ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,5,5);p.y+=p.dy;if(p.y>c.height)p.y=0;}); requestAnimationFrame(draw); })();
+}
+function stopConfetti(){ confettiAnimating=false; const c=confettiCanvas; const ctx=c.getContext('2d'); ctx.clearRect(0,0,c.width,c.height); }
+
 // ====== Utilidades ======
 const SUITS=["♠","♥","♦","♣"], RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+const RING=["A","2","3","4","5","6","7","8","9","10","J","Q","K"]; // circular: A entre K y 2
+const CIRCLE=[...RING, ...RING];
 function rankVal(r,aceHigh=false){ if(r==='A')return aceHigh?14:1; if(r==='J')return 11; if(r==='Q')return 12; if(r==='K')return 13; return parseInt(r,10); }
 function isSet(cards){ if(cards.length<3) return false; const r=cards[0].rank; return cards.every(c=>c.rank===r); }
-function isRun(cards){ if(cards.length<3) return false; const s=cards[0].suit; if(!cards.every(c=>c.suit===s)) return false; const ranks=cards.map(c=>c.rank);
-  function check(ah){ const v=ranks.map(r=>rankVal(r,ah)).sort((a,b)=>a-b); for(let i=1;i<v.length;i++){ if(v[i]!==v[i-1]+1) return false; } return true; }
-  return check(false)||check(true);
+function findRunSequence(cards){
+  if(cards.length<3) return null; const s=cards[0].suit; if(!cards.every(c=>c.suit===s)) return null;
+  const ranks=cards.map(c=>c.rank);
+  if(new Set(ranks).size!==ranks.length) return null; // sin duplicados de rango
+  for(let i=0;i<=CIRCLE.length-cards.length;i++){
+    const seq=CIRCLE.slice(i, i+cards.length);
+    if(ranks.every(r=>seq.includes(r)) && seq.every(r=>ranks.includes(r))) return seq;
+  }
+  return null;
 }
-function runEnds(group){
-  if(!isRun(group.cards)) return null;
-  const valsLow = group.cards.map(c=>rankVal(c.rank,false)).sort((a,b)=>a-b);
-  const valsHigh= group.cards.map(c=>rankVal(c.rank,true)).sort((a,b)=>a-b);
-  const consec = (arr)=> arr.every((v,i)=> i===0 || v===arr[i-1]+1);
-  if(consec(valsLow))  return [valsLow[0], valsLow[valsLow.length-1]]; // modo A-bajo
-  if(consec(valsHigh)) return [valsHigh[0],valsHigh[valsHigh.length-1]]; // modo A-alto (Q-K-A)
-  return [Math.min(valsHigh[0],valsLow[0]), Math.max(valsHigh.at(-1), valsLow.at(-1))];
-}
-function isEndOfRun(group, card){
-  if(!isRun(group.cards)) return false;
-  if(card.suit!==group.cards[0].suit) return false;
-  const ends = runEnds(group); if(!ends) return false;
-  const [lo, hi] = ends;
-  const vLow = rankVal(card.rank,false);
-  const vHigh= rankVal(card.rank,true);
-  return vLow===lo || vHigh===hi;
-}
+function isRun(cards){ return !!findRunSequence(cards); }
+function runEnds(group){ const seq=findRunSequence(group.cards); if(!seq) return null; return [seq[0], seq[seq.length-1]]; }
+function isEndOfRun(group, card){ const ends=runEnds(group); if(!ends) return false; if(card.suit!==group.cards[0].suit) return false; return card.rank===ends[0] || card.rank===ends[1]; }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
 
 // ====== Estado ======
-let state={ players:[], table:[], deck:[], current:0, decks:1 };
-let turn=null; // {playedFromHand, enteredThisTurn, takenFromTable:Set}
-let groupSeq=1; let selectedCards=new Set();
+let state={ players:[], table:[], deck:[], current:0, decks:2 };
+let turn=null; // {playedFromHand, enteredThisTurn, takenFromTable:Set, undo:[]}
+let groupSeq=1; 
+let selectedCards=new Set();   // selección de mano
+let selectedTable=new Set();   // selección de cartas en mesa
 
 // ====== Nueva partida ======
-function buildDeck(decks){ const d=[]; for(let k=0;k<decks;k++){ for(const s of SUITS){ for(const r of RANKS){ d.push({id:`${r}${s}_${k}` ,rank:r,suit:s}); } } } return shuffle(d); }
+function buildDeck(decks){ const d=[]; for(let k=0;k<decks;k++){ for(const s of SUITS){ for(const r of RANKS){ d.push({id:`${r}${s}_${k}_${Math.random().toString(36).slice(2,7)}` ,rank:r,suit:s}); } } } return shuffle(d); }
 function newGame(){
-  const total=Math.max(2,Math.min(6,parseInt(document.getElementById('playersInput').value||'3',10)));
-  const botsReq=Math.max(0,Math.min(5,parseInt(document.getElementById('botsInput').value||'2',10)));
-  const decksSel=Math.max(1,Math.min(2,parseInt(document.getElementById('decksInput').value||'1',10)));
-  const bots=Math.min(botsReq,total-1);
+  stopConfetti(); grannyNode.style.display='none';
+  const botsReq=Math.max(1,Math.min(5,parseInt(document.getElementById('botsInput').value||'2',10)));
+  const total=Math.max(2, Math.min(6, 1 + botsReq)); // 1 humano + CPUs
+  const decksSel=2; // siempre 2 mazos
   state={players:[], table:[], deck:buildDeck(decksSel), current:0, decks:decksSel};
   state.players.push({hand:[], ai:false, name:'Jugador 1', entered:false});
-  for(let i=2;i<=total;i++){ const ai=(i>total-bots); state.players.push({hand:[], ai, name:`Jugador ${i}${ai?' (CPU)':''}`, entered:false}); }
+  for(let i=2;i<=total;i++){ state.players.push({hand:[], ai:true, name:`CPU ${i-1}`, entered:false}); }
   for(let r=0;r<12;r++){ for(let p=0;p<state.players.length;p++){ const c=state.deck.pop(); if(c) state.players[p].hand.push(c); }}
-  groupSeq=1; startTurn(); renderAll(); log(`Nueva partida: ${total} jugadores, ${bots} CPU, mazos: ${decksSel}.`);
+  groupSeq=1; startTurn(); renderAll(); log(`Nueva partida: ${total} jugadores (CPUs: ${total-1}), mazos: ${decksSel}.`);
 }
-function startTurn(){ turn={playedFromHand:0, enteredThisTurn:false, takenFromTable:new Set()}; selectedCards.clear(); renderAll(); log(`Turno de ${state.players[state.current].name}`); }
-function nextTurn(){ state.current=(state.current+1)%state.players.length; startTurn(); const p=state.players[state.current]; if(p.ai){ setTimeout(cpuPlay, 600); } }
+function startTurn(){ turn={playedFromHand:0, enteredThisTurn:false, takenFromTable:new Set(), undo:[]}; selectedCards.clear(); selectedTable.clear(); renderAll(); log(`Turno de ${state.players[state.current].name}`); const p=state.players[state.current]; if(p.ai){ setTimeout(cpuPlay, 650); } }
+function nextTurn(){ state.current=(state.current+1)%state.players.length; startTurn(); }
 
 // ====== DnD helpers ======
 function makeDrop(el, cb){ if(!el) return; el.addEventListener('dragover', ev=>ev.preventDefault()); el.addEventListener('drop', ev=>{ ev.preventDefault(); try{ const data=JSON.parse(ev.dataTransfer.getData('text/plain')); cb(data); }catch(e){} }); }
@@ -141,64 +166,56 @@ function makeDrop(el, cb){ if(!el) return; el.addEventListener('dragover', ev=>e
 // ====== Render ======
 function renderPlayers(){ const bar=document.getElementById('playersBar'); if(!bar) return; bar.innerHTML=''; if(!state.players||state.players.length===0){ bar.textContent='(sin jugadores)'; return; } state.players.forEach((p,i)=>{ const chip=document.createElement('div'); chip.className='chip'; const dot=document.createElement('span'); dot.textContent=(i===state.current?'●':'○'); dot.style.fontSize='12px'; const name=document.createElement('span'); name.textContent=p.name+(p.ai?' 🤖':'')+(p.entered?' ✓':''); name.style.fontWeight='600'; const cards=document.createElement('span'); cards.textContent=`(${p.hand.length})`; chip.appendChild(dot); chip.appendChild(name); chip.appendChild(cards); bar.appendChild(chip); }); }
 
-function cardEl(c,from,groupId){ const d=document.createElement('div'); d.className='card'+((c.suit==='♥'||c.suit==='♦')?' red':''); d.dataset.cardId=c.id; d.dataset.from=from; if(groupId!=null) d.dataset.groupId=groupId; d.innerHTML=`<div>${c.rank}</div><div>${c.suit}</div>`; d.addEventListener('click',()=>{ if(from==='hand'){ if(selectedCards.has(c.id)) selectedCards.delete(c.id); else selectedCards.add(c.id); renderHand(); } else if(from==='table'){ d.classList.toggle('selected'); } }); d.draggable=true; d.addEventListener('dragstart',ev=>{ ev.dataTransfer.setData('text/plain', JSON.stringify({cid:c.id, from, groupId})); }); if(selectedCards.has(c.id)) d.classList.add('selected'); return d; }
+function cardEl(c,from,groupId){ const d=document.createElement('div'); d.className='card'+((c.suit==='♥'||c.suit==='♦')?' red':''); d.dataset.cardId=c.id; d.dataset.from=from; if(groupId!=null) d.dataset.groupId=groupId; d.innerHTML=`<div>${c.rank}</div><div>${c.suit}</div>`; d.addEventListener('click',()=>{ if(from==='hand'){ if(selectedCards.has(c.id)) selectedCards.delete(c.id); else selectedCards.add(c.id); renderHand(); } else if(from==='table'){ if(selectedTable.has(c.id)) selectedTable.delete(c.id); else selectedTable.add(c.id); renderTable(); } }); d.draggable=true; d.addEventListener('dragstart',ev=>{ ev.dataTransfer.setData('text/plain', JSON.stringify({cid:c.id, from, groupId})); }); if(from==='hand' && selectedCards.has(c.id)) d.classList.add('selected'); if(from==='table' && selectedTable.has(c.id)) d.classList.add('selected'); return d; }
 
 function renderTable(){ const wrap=document.getElementById('groups'); if(!wrap) return; wrap.querySelectorAll('.group').forEach(n=>n.remove()); state.table.forEach((g,gi)=>{ const div=document.createElement('div'); div.className='group'; div.dataset.gid=g.id; const header=document.createElement('div'); header.className='group-header'; header.textContent=`Grupo ${gi+1} — ${isSet(g.cards)?'Trío/Cuarteto':'Escala'} (${g.cards.length})`; const cc=document.createElement('div'); cc.className='cards'; g.cards.forEach(c=> cc.appendChild(cardEl(c,'table',g.id)) ); div.appendChild(header); div.appendChild(cc); const tile=document.getElementById('newGroupTile'); if(tile) wrap.insertBefore(div,tile); else wrap.appendChild(div); makeDrop(cc, payload=> onDropToGroup(payload,g.id));
-    // Tap en móvil: tocar grupo intenta colgar las cartas seleccionadas
     if('ontouchstart' in window){ div.addEventListener('click', ()=>{ const p=state.players[state.current]; if(p.ai) return; const selected=[...selectedCards].map(id=> state.players[0].hand.find(c=>c.id===id)).filter(Boolean); if(!selected.length) return; for(const card of selected){ if(turn.playedFromHand>=3 && !turn.takenFromTable.has(card.id)) break; if(canHangOnGroup(card,g)){ const idx=p.hand.findIndex(h=>h.id===card.id); if(idx>=0){ p.hand.splice(idx,1); g.cards.push(card); if(!turn.takenFromTable.has(card.id)) turn.playedFromHand++; selectedCards.delete(card.id); } } } renderAll(); }); }
   }); const tile=document.getElementById('newGroupTile'); if(tile){ makeDrop(tile, onDropToNewGroup); } }
 
 function renderHand(){ const hand=document.getElementById('handCards'); if(!hand){ log('No se encontró contenedor de mano'); return; } hand.innerHTML=''; const me=state.players && state.players[0]; if(!me){ log('Jugadores no inicializados aún'); return; } me.hand.forEach(c=> hand.appendChild(cardEl(c,'hand',null)) ); const hc=document.getElementById('handCount'); if(hc) hc.textContent=me.hand.length; const pl=document.getElementById('playerLabel'); if(pl) pl.textContent=me.name; makeDrop(hand, onDropToHand); }
 
-function renderAll(){ try{ renderPlayers(); }catch(e){ log('Error renderPlayers: '+e); } try{ renderTable(); }catch(e){ log('Error renderTable: '+e); } try{ renderHand(); }catch(e){ log('Error renderHand: '+e); } try{ ensureHint(); }catch(e){ log('Error ensureHint: '+e); } }
+function renderAll(){ try{ renderPlayers(); }catch(e){ log('Error renderPlayers: '+e); } try{ renderTable(); }catch(e){ log('Error renderTable: '+e); } try{ renderHand(); }catch(e){ log('Error renderHand: '+e); } }
 
-// ====== Reglas de "colgar" ======
+// ====== Reglas de colgar ======
 function canHangOnGroup(card, group){
   if(isSet(group.cards)){
     return group.cards[0].rank===card.rank; // sets ilimitados ≥3
   }
   if(isRun(group.cards)){
     if(card.suit!==group.cards[0].suit) return false;
-    const sorted=group.cards.slice().sort((a,b)=>rankVal(a.rank,true)-rankVal(b.rank,true));
-    const lo=rankVal(sorted[0].rank,false), hi=rankVal(sorted[sorted.length-1].rank,true);
-    const vLow=rankVal(card.rank,false), vHigh=rankVal(card.rank,true);
-    return (vLow===lo-1)||(vHigh===hi+1);
+    const seq=findRunSequence(group.cards); if(!seq) return false;
+    const left = RING[(RING.indexOf(seq[0])+RING.length-1)%RING.length];
+    const right= RING[(RING.indexOf(seq[seq.length-1])+1)%RING.length];
+    return card.rank===left || card.rank===right;
   }
   return false;
 }
 
-// ====== Drop handlers ======
+// ====== Drops ======
 function onDropToGroup(payload,destId){
   const p=state.players[state.current];
   const dest=state.table.find(g=>g.id===destId);
   if(!dest) return;
-
   if(payload.from==='hand'){
     if(!p.entered && !turn.enteredThisTurn){ log('Primero debes entrar con un trío o escala propios.'); return; }
-    const i=p.hand.findIndex(c=>c.id===payload.cid); if(i<0) return;
-    const card=p.hand[i];
+    const i=p.hand.findIndex(c=>c.id===payload.cid); if(i<0) return; const card=p.hand[i];
     if(!canHangOnGroup(card,dest)){ log('Esa carta no cuelga en ese grupo.'); return; }
     if(!turn.takenFromTable.has(card.id) && turn.playedFromHand>=3){ log('Límite de 3 cartas desde la mano por turno.'); return; }
-    p.hand.splice(i,1);
-    dest.cards.push(card);
+    p.hand.splice(i,1); dest.cards.push(card);
     if(turn.takenFromTable.has(card.id)) turn.takenFromTable.delete(card.id); else turn.playedFromHand++;
-    renderAll();
-    if(p.hand.length===0){ alert(p.name+" gana la partida!"); }
+    renderAll(); checkWin(p);
     return;
   }
-
   if(payload.from==='table'){
     if(!p.entered && !turn.enteredThisTurn){ log('Para reorganizar la mesa, primero entra con un grupo propio.'); return; }
-    const src=state.table.find(g=>g.id===payload.groupId);
-    if(!src) return;
-    const idx=src.cards.findIndex(c=>c.id===payload.cid);
-    if(idx<0) return;
-    const moved=src.cards[idx];
+    const src=state.table.find(g=>g.id===payload.groupId); if(!src) return;
+    // Unificación de sets del mismo rango
+    if(isSet(src.cards) && isSet(dest.cards) && src.cards[0].rank===dest.cards[0].rank){ dest.cards.push(...src.cards); state.table=state.table.filter(g=>g!==src); renderAll(); return; }
+    const idx=src.cards.findIndex(c=>c.id===payload.cid); if(idx<0) return; const moved=src.cards[idx];
     const afterSrc=src.cards.slice(0,idx).concat(src.cards.slice(idx+1));
     if(afterSrc.length>0 && !(isSet(afterSrc)||isRun(afterSrc))){ log('Quitar esa carta rompe el grupo de origen.'); return; }
     if(!canHangOnGroup(moved,dest)){ log('Esa carta no encaja en el grupo destino.'); return; }
-    src.cards.splice(idx,1);
-    dest.cards.push(moved);
+    src.cards.splice(idx,1); selectedTable.delete(moved.id); dest.cards.push(moved);
     if(src.cards.length===0){ state.table=state.table.filter(g=>g!==src); }
     renderAll();
   }
@@ -207,46 +224,29 @@ function onDropToGroup(payload,destId){
 function onDropToNewGroup(payload){
   const p=state.players[state.current];
   if(payload.from==='hand'){
-    log('Para crear un nuevo grupo desde tu mano usa "Agrupar seleccionadas" (3 cartas).');
-    return;
+    log('Para crear un nuevo grupo desde tu mano usa "Agrupar seleccionadas" (3 cartas).'); return;
   }
   if(payload.from==='table'){
     if(!p.entered && !turn.enteredThisTurn){ log('Para reorganizar la mesa primero debes entrar con un grupo propio.'); return; }
-    const src=state.table.find(g=>g.id===payload.groupId); if(!src) return;
-    const idx=src.cards.findIndex(c=>c.id===payload.cid); if(idx<0) return;
-    const moved=src.cards[idx];
-    const after=src.cards.slice(0,idx).concat(src.cards.slice(idx+1));
+    const src=state.table.find(g=>g.id===payload.groupId); if(!src) return; const idx=src.cards.findIndex(c=>c.id===payload.cid); if(idx<0) return;
+    const moved=src.cards[idx]; const after=src.cards.slice(0,idx).concat(src.cards.slice(idx+1));
     if(after.length>0 && !(isSet(after)||isRun(after))){ log('Quitar esa carta rompe el grupo de origen.'); return; }
-    state.table.push({id:'g'+(groupSeq++), cards:[moved]});
-    src.cards.splice(idx,1);
-    renderAll();
+    state.table.push({id:'g'+(groupSeq++), cards:[moved]}); src.cards.splice(idx,1); selectedTable.delete(moved.id); renderAll();
   }
 }
 
 function onDropToHand(payload){
-  const p=state.players[state.current];
-  if(payload.from!=='table') return;
+  const p=state.players[state.current]; if(payload.from!=='table') return;
   if(!p.entered && !turn.enteredThisTurn){ log('Para retirar cartas de la mesa primero debes entrar con un grupo propio.'); return; }
-  const src=state.table.find(g=>g.id===payload.groupId); if(!src) return;
-  const idx=src.cards.findIndex(c=>c.id===payload.cid); if(idx<0) return;
-  const moved=src.cards[idx];
-
+  const src=state.table.find(g=>g.id===payload.groupId); if(!src) return; const idx=src.cards.findIndex(c=>c.id===payload.cid); if(idx<0) return; const moved=src.cards[idx];
   if(isRun(src.cards)){
     if(!isEndOfRun(src, moved)){ log('Solo puedes llevar a tu mano cartas de los extremos de una escala.'); return; }
   } else if(isSet(src.cards)){
-    const afterSet=src.cards.slice(0,idx).concat(src.cards.slice(idx+1));
-    if(!(afterSet.length>=3 && isSet(afterSet))){ log('En tríos/cuartetos, solo puedes llevar una carta si el grupo restante sigue válido (mín. 3 cartas).'); return; }
-  } else { log('No puedes retirar cartas de un grupo inválido.'); return; }
-
-  const after=src.cards.slice(0,idx).concat(src.cards.slice(idx+1));
-  if(after.length>0 && !(isSet(after)||isRun(after))){ log('No puedes llevar esa carta: dejaría inválido el grupo.'); return; }
-
-  src.cards.splice(idx,1);
-  p.hand.push(moved);
-  if(src.cards.length===0){ state.table=state.table.filter(g=>g!==src); }
-  if(!turn.takenFromTable) turn.takenFromTable=new Set();
-  turn.takenFromTable.add(moved.id);
-  renderAll();
+    const afterSet=src.cards.slice(0,idx).concat(src.cards.slice(idx+1)); if(!(afterSet.length>=3 && isSet(afterSet))){ log('En sets, solo puedes llevar una carta si el grupo restante sigue válido (≥3).'); return; }
+  } else { log('Grupo inválido.'); return; }
+  const after=src.cards.slice(0,idx).concat(src.cards.slice(idx+1)); if(after.length>0 && !(isSet(after)||isRun(after))){ log('Dejaría inválido el grupo.'); return; }
+  src.cards.splice(idx,1); p.hand.push(moved); if(src.cards.length===0){ state.table=state.table.filter(g=>g!==src); }
+  if(!turn.takenFromTable) turn.takenFromTable=new Set(); turn.takenFromTable.add(moved.id); selectedTable.delete(moved.id); renderAll();
 }
 
 // ====== Botones ======
@@ -260,22 +260,24 @@ function onDropToHand(payload){
     if(turn.playedFromHand + countable > 3){ log('Sobrepasas el límite de 3 cartas desde la mano.'); return; }
     if(!(isSet(chosen)||isRun(chosen))){ log('Las cartas seleccionadas no forman un grupo válido.'); return; }
     chosen.forEach(c=>{ const i=p.hand.findIndex(h=>h.id===c.id); if(i>=0) p.hand.splice(i,1); });
-    state.table.push({id:'g'+(groupSeq++), cards:chosen});
-    p.entered=true; turn.enteredThisTurn=true; turn.playedFromHand += countable;
-    chosen.forEach(c=> turn.takenFromTable.delete(c.id));
-    selectedCards.clear();
-    renderAll(); log(`${p.name} bajó un grupo.`);
+    const gid='g'+(groupSeq++); state.table.push({id:gid, cards:chosen});
+    turn.undo.push({type:'newGroup', gid, cards:chosen.map(c=>({...c})), playerIndex:state.current, countable});
+    p.entered=true; turn.enteredThisTurn=true; turn.playedFromHand += countable; selectedCards.clear();
+    renderAll(); checkWin(p);
+  };
+  document.getElementById('undoBtn').onclick=()=>{
+    const action=turn.undo?.pop(); if(!action){ log('No hay nada que deshacer.'); return; }
+    if(action.type!=='newGroup' || action.playerIndex!==state.current){ log('Solo puedes deshacer el último grupo que hiciste en este turno.'); return; }
+    const idx=state.table.findIndex(g=>g.id===action.gid); if(idx<0){ log('No se encontró el grupo a deshacer.'); return; }
+    const p=state.players[state.current]; const grp=state.table[idx]; p.hand.push(...grp.cards); state.table.splice(idx,1);
+    turn.playedFromHand=Math.max(0, turn.playedFromHand - (action.countable||0)); selectedCards=new Set(grp.cards.map(c=>c.id)); renderAll();
   };
   document.getElementById('hintBtn').onclick=()=>{
     const p=state.players[state.current];
     for(let i=0;i<p.hand.length-2;i++){
       for(let j=i+1;j<p.hand.length-1;j++){
         for(let k=j+1;k<p.hand.length;k++){
-          const combo=[p.hand[i],p.hand[j],p.hand[k]];
-          if(isSet(combo)||isRun(combo)){
-            selectedCards=new Set(combo.map(c=>c.id));
-            renderHand(); log('Sugerencia marcada en la mano.'); return;
-          }
+          const combo=[p.hand[i],p.hand[j],p.hand[k]]; if(isSet(combo)||isRun(combo)){ selectedCards=new Set(combo.map(c=>c.id)); renderHand(); const firstSelId=combo[0]?.id; if(firstSelId){ const el=document.querySelector(`[data-card-id="${firstSelId}"]`); if(el){ el.scrollIntoView({inline:'center', behavior:'smooth', block:'nearest'}); } } log('Sugerencia marcada en la mano.'); return; }
         }
       }
     }
@@ -283,48 +285,39 @@ function onDropToHand(payload){
   };
   document.getElementById('endTurnBtn').onclick=()=>{
     const p=state.players[state.current];
-    for(const g of state.table){ if(!(isSet(g.cards)||isRun(g.cards))){ log('La mesa no es válida aún. Reorganiza hasta dejar solo tríos/escalas válidas.'); return; } }
-    const handIds=new Set(p.hand.map(c=>c.id));
-    const pendientes=[...turn.takenFromTable].filter(id=>handIds.has(id));
-    if(pendientes.length>0){ log('No puedes terminar: tienes en la mano cartas retiradas de la mesa. Debes usarlas en este turno.'); return; }
+    for(const g of state.table){ if(!(isSet(g.cards)||isRun(g.cards))){ log('La mesa no es válida aún.'); return; } }
+    const handIds=new Set(p.hand.map(c=>c.id)); const pendientes=[...turn.takenFromTable].filter(id=>handIds.has(id));
+    if(pendientes.length>0){ log('No puedes terminar: tienes cartas retiradas de la mesa sin usar.'); return; }
     if(turn.playedFromHand===0){ const card=state.deck.pop(); if(card){ p.hand.push(card); log(`${p.name} roba una carta.`); } }
     nextTurn();
   };
+  document.getElementById('showInstrBtn').onclick=()=>{ const panel=document.getElementById('instrPanel'); panel.style.display = panel.style.display==='none'? 'block':'none'; };
 })();
 
-// ====== CPU con reglas de mesa ======
+// ====== CPU ======
 function handCombos(hand){
   for(let i=0;i<hand.length-2;i++){
     for(let j=i+1;j<hand.length-1;j++){
       for(let k=j+1;k<hand.length;k++){
-        const combo=[hand[i],hand[j],hand[k]];
-        if(isSet(combo)||isRun(combo)) return combo;
+        const combo=[hand[i],hand[j],hand[k]]; if(isSet(combo)||isRun(combo)) return combo;
       }
     }
   }
   return null;
 }
-function groupValidAfterRemoval(group, idx){
-  const after=group.cards.slice(0,idx).concat(group.cards.slice(idx+1));
-  if(after.length===0) return true;
-  return isSet(after)||isRun(after);
-}
+function groupValidAfterRemoval(group, idx){ const after=group.cards.slice(0,idx).concat(group.cards.slice(idx+1)); if(after.length===0) return true; return isSet(after)||isRun(after); }
 function cpuPlay(){
   const p=state.players[state.current]; if(!p.ai) return;
-  if(!p.entered){
-    const combo=handCombos(p.hand);
-    if(combo){ state.table.push({id:'g'+(groupSeq++), cards:combo}); p.hand=p.hand.filter(c=>!combo.includes(c)); p.entered=true; turn.playedFromHand+=3; log(`${p.name} (CPU) entra con un grupo.`); }
+  if(!p.entered){ const combo=handCombos(p.hand); if(combo){ state.table.push({id:'g'+(groupSeq++), cards:combo}); p.hand=p.hand.filter(c=>!combo.includes(c)); p.entered=true; turn.playedFromHand+=3; log(`${p.name} (CPU) entra con un grupo.`); }
   }
   let safety=20; let progressed=true;
   while(safety-->0 && progressed){
     progressed=false;
-    // Colgar desde mano
     for(let h=0; h<p.hand.length && turn.playedFromHand<3; h++){
       const card=p.hand[h];
       for(const g of state.table){ if(canHangOnGroup(card,g)){ g.cards.push(card); p.hand.splice(h,1); h--; turn.playedFromHand++; progressed=true; log(`${p.name} (CPU) cuelga ${card.rank}${card.suit}.`); break; } }
     }
     if(progressed) continue;
-    // Revoltijo mesa→mesa
     outerMove:
     for(let gi=0; gi<state.table.length; gi++){
       const g=state.table[gi];
@@ -342,21 +335,17 @@ function cpuPlay(){
       }
     }
     if(progressed) continue;
-    // Tomar de mesa y usar
     takeLoop:
     for(let gi=0; gi<state.table.length; gi++){
       const g=state.table[gi];
       const candidates=[];
       if(isRun(g.cards)){
-        const sorted=g.cards.slice().sort((a,b)=>rankVal(a.rank,true)-rankVal(b.rank,true));
-        const ends=[sorted[0], sorted[sorted.length-1]];
-        for(const end of ends){ const idx=g.cards.findIndex(c=>c.id===end.id); if(idx>=0 && groupValidAfterRemoval(g, idx)) candidates.push({idx,card:end}); }
+        const seq=findRunSequence(g.cards); if(seq){ const ends=[seq[0], seq[seq.length-1]]; for(const endRank of ends){ const ci=g.cards.findIndex(c=>c.rank===endRank); if(ci>=0 && groupValidAfterRemoval(g, ci)) candidates.push({idx:ci,card:g.cards[ci]}); } }
       } else if(isSet(g.cards) && g.cards.length>=4){
         for(let ci=0; ci<g.cards.length; ci++) if(groupValidAfterRemoval(g, ci)) candidates.push({idx:ci,card:g.cards[ci]});
       }
       for(const cand of candidates){
         const card=cand.card;
-        // a) Colgar a otro grupo
         for(let gj=0; gj<state.table.length; gj++){
           if(gj===gi) continue; const dest=state.table[gj];
           if(canHangOnGroup(card,dest)){
@@ -365,7 +354,6 @@ function cpuPlay(){
             progressed=true; log(`${p.name} (CPU) toma ${card.rank}${card.suit} y cuelga.`); break takeLoop;
           }
         }
-        // b) Formar nuevo grupo con 2 de mano
         for(let i=0;i<p.hand.length-1;i++){
           for(let j=i+1;j<p.hand.length;j++){
             const combo=[card,p.hand[i],p.hand[j]];
@@ -390,21 +378,16 @@ function cpuPlay(){
   nextTurn();
 }
 
-// ====== Instrucciones ======
-function ensureHint(){ const hint=document.querySelector('.hint'); if(!hint) return; hint.innerHTML = `<strong>Reglas e instrucciones</strong><br>
-• Entra bajando 3 cartas propias (trío/escala).<br>
-• Límite por turno: 3 cartas jugadas <em>desde tu mano</em> (no cuentan las que retiraste de la mesa este turno).<br>
-• Puedes mover cartas entre grupos.<br>
-• Para llevar una carta a tu mano: (a) en <b>escalas</b>, solo desde los <em>extremos</em>; (b) en <b>tríos/cuartetos</b>, puedes tomar cualquiera <em>si el grupo restante sigue válido (≥3)</em>.<br>
-• Si tomas cartas de la mesa, debes usarlas en el mismo turno o no podrás terminar.`; }
+// ====== Win/Lose ======
+function checkWin(p){ if(p.hand.length===0){ if(!p.ai){ showGranny('¡Felicidades Moñoño!', true); } else { showGranny('¡Para la próxima moñoño!', false); } } }
 
-// ====== Captura de errores ======
+// ====== Errores ======
 window.addEventListener('error', (e)=>{ log('⚠️ Error: '+ (e.message||e.error)); });
 
-// init seguro tras cargar DOM
+// init
 if(document.readyState==='loading'){
-  document.addEventListener('DOMContentLoaded', ()=>{ try{ newGame(); ensureHint(); }catch(err){ log('Error al iniciar: '+err); } });
-}else{ try{ newGame(); ensureHint(); }catch(err){ log('Error al iniciar: '+err); } }
+  document.addEventListener('DOMContentLoaded', ()=>{ try{ newGame(); }catch(err){ log('Error al iniciar: '+err); } });
+}else{ try{ newGame(); }catch(err){ log('Error al iniciar: '+err); } }
 </script>
 </body>
 </html>

@@ -179,9 +179,51 @@ function onDropToNewGroup(payload){ const p=state.players[state.current];
   }
 }
 
-function onDropToHand(payload){ const p=state.players[state.current]; if(payload.from!=='table') return; if(!p.entered && !turn.enteredThisTurn){ log('Para retirar cartas de la mesa primero debes entrar con un grupo propio.'); return; }
-  const src=state.table.find(g=>g.id===payload.groupId); if(!src) return; const idx=src.cards.findIndex(c=>c.id===payload.cid); if(idx<0) return; const moved=src.cards[idx];
-  // Solo extremos de escalas (no tríos/cuarteras)
+function onDropToHand(payload){
+  const p=state.players[state.current];
+  if(payload.from!=='table') return;
+  if(!p.entered && !turn.enteredThisTurn){ log('Para retirar cartas de la mesa primero debes entrar con un grupo propio.'); return; }
+
+  const src=state.table.find(g=>g.id===payload.groupId);
+  if(!src) return;
+  const idx=src.cards.findIndex(c=>c.id===payload.cid);
+  if(idx<0) return;
+  const candidate=src.cards[idx];
+
+  // Reglas para llevar a la mano
+  if(isRun(src.cards)){
+    // Solo extremos de una escala
+    if(!isEndOfRun(src, candidate)){
+      log('Solo puedes llevar a tu mano cartas de los extremos de una escala.');
+      return;
+    }
+  } else if(isSet(src.cards)){
+    // En tríos/cuartetos: se puede retirar cualquier carta SI al quitarla queda un grupo válido (>=3)
+    const afterSet=src.cards.slice(0,idx).concat(src.cards.slice(idx+1));
+    if(!(afterSet.length>=3 && isSet(afterSet))){
+      log('En tríos/cuartetos, solo puedes llevar una carta si el grupo restante sigue válido (mín. 3 cartas).');
+      return;
+    }
+  } else {
+    // No es ni set ni run válido → no permitimos retirar
+    log('No puedes retirar cartas de un grupo inválido.');
+    return;
+  }
+
+  // Validación general tras retirar
+  const after=src.cards.slice(0,idx).concat(src.cards.slice(idx+1));
+  if(after.length>0 && !(isSet(after)||isRun(after))){
+    log('No puedes llevar esa carta: dejaría inválido el grupo.');
+    return;
+  }
+
+  // Efectuar movimiento
+  src.cards.splice(idx,1);
+  p.hand.push(candidate);
+  if(src.cards.length===0){ state.table=state.table.filter(g=>g!==src); }
+  turn.takenFromTable.add(candidate.id);
+  renderAll();
+}
   if(!isRun(src.cards) || !isEndOfRun(src, moved)){ log('Solo puedes llevar a tu mano cartas de los extremos de una escala.'); return; }
   const after=src.cards.slice(0,idx).concat(src.cards.slice(idx+1)); if(after.length>0 && !(isSet(after)||isRun(after))){ log('No puedes llevar esa carta: dejaría inválido el grupo.'); return; }
   src.cards.splice(idx,1); p.hand.push(moved); if(src.cards.length===0){ state.table=state.table.filter(g=>g!==src); }
@@ -236,7 +278,8 @@ function cpuPlay(){ const p=state.players[state.current]; if(!p.ai) return; let 
 function ensureHint(){ const hint=document.querySelector('.hint'); if(!hint) return; hint.innerHTML = `<strong>Reglas e instrucciones</strong><br>
 • Entra bajando 3 cartas propias (trío/escala).<br>
 • Límite por turno: 3 cartas jugadas <em>desde tu mano</em> (no cuentan las que retiraste de la mesa este turno).<br>
-• Puedes mover cartas entre grupos. Para llevar una carta a tu mano, solo desde los <em>extremos</em> de una <b>escala</b> (no de tríos/cuarteras).<br>
+• Puedes mover cartas entre grupos.<br>
+• Para llevar una carta a tu mano: (a) en <b>escalas</b>, solo desde los <em>extremos</em>; (b) en <b>tríos/cuartetos</b>, puedes tomar cualquiera <em>si el grupo restante sigue válido (≥3)</em>.<br>
 • Si tomas cartas de la mesa, debes usarlas en el mismo turno o no podrás terminar.`; }
 
 // ====== Pruebas rápidas (sanity checks) ======
@@ -249,10 +292,14 @@ function ensureHint(){ const hint=document.querySelector('.hint'); if(!hint) ret
   console.assert(isRun([{rank:'Q',suit:'♦'},{rank:'K',suit:'♦'},{rank:'A',suit:'♦'}])===true,'isRun Q-K-A');
   console.assert(isRun([{rank:'2',suit:'♥'},{rank:'3',suit:'♥'},{rank:'5',suit:'♥'}])===false,'isRun hueco');
   // isEndOfRun
-  const grp={cards:[{rank:'2',suit:'♦'},{rank:'3',suit:'♦'},{rank:'4',suit:'♦'}]};
-  console.assert(isEndOfRun(grp,{rank:'2',suit:'♦'})===true,'extremo bajo');
-  console.assert(isEndOfRun(grp,{rank:'4',suit:'♦'})===true,'extremo alto');
-  console.assert(isEndOfRun(grp,{rank:'3',suit:'♦'})===false,'no extremo');
+  const grpRun={cards:[{rank:'2',suit:'♦'},{rank:'3',suit:'♦'},{rank:'4',suit:'♦'}]};
+  console.assert(isEndOfRun(grpRun,{rank:'2',suit:'♦'})===true,'extremo bajo');
+  console.assert(isEndOfRun(grpRun,{rank:'4',suit:'♦'})===true,'extremo alto');
+  console.assert(isEndOfRun(grpRun,{rank:'3',suit:'♦'})===false,'no extremo');
+  // set removal rule
+  const grpSet4={cards:[{rank:'9',suit:'♠'},{rank:'9',suit:'♥'},{rank:'9',suit:'♦'},{rank:'9',suit:'♣'}]};
+  const afterRemoveOne=[grpSet4.cards[0],grpSet4.cards[1],grpSet4.cards[2]];
+  console.assert(afterRemoveOne.length>=3 && isSet(afterRemoveOne),'remover de cuarteto deja trío válido');
 })();
 
 // init

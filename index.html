@@ -294,80 +294,177 @@ function onDropToHand(payload){
   document.getElementById('showInstrBtn').onclick=()=>{ const panel=document.getElementById('instrPanel'); panel.style.display = panel.style.display==='none'? 'block':'none'; };
 })();
 
-// ====== CPU ======
+// ====== CPU (IA avanzada con revoltijo) ======
 function handCombos(hand){
+  const out=[];
   for(let i=0;i<hand.length-2;i++){
     for(let j=i+1;j<hand.length-1;j++){
       for(let k=j+1;k<hand.length;k++){
-        const combo=[hand[i],hand[j],hand[k]]; if(isSet(combo)||isRun(combo)) return combo;
+        const combo=[hand[i],hand[j],hand[k]]; if(isSet(combo)||isRun(combo)) out.push(combo);
+      }
+    }
+  }
+  return out;
+}
+function groupValidAfterRemoval(group, idx){ const after=group.cards.slice(0,idx).concat(group.cards.slice(idx+1)); if(after.length===0) return true; return isSet(after)||isRun(after); }
+function canTakeFromGroup(group, idx){
+  if(isRun(group.cards)){
+    const ends=runEnds(group); if(!ends) return false; const card=group.cards[idx]; if(card.suit!==group.cards[0].suit) return false; if(card.rank!==ends[0] && card.rank!==ends[1]) return false; return groupValidAfterRemoval(group, idx);
+  } else if(isSet(group.cards)){
+    if(group.cards.length<4) return false; return groupValidAfterRemoval(group, idx);
+  }
+  return false;
+}
+function anyGroupAccepts(card, table=state.table){ for(const g of table){ if(canHangOnGroup(card,g)) return g.id; } return null; }
+function copyTable(table){ return table.map(g=>({id:g.id, cards:g.cards.map(c=>({...c}))})); }
+function tableGroupById(table, gid){ return table.find(g=>g.id===gid); }
+function simulateMove(table, srcId, cardId, destId){
+  const t=copyTable(table);
+  const src=tableGroupById(t, srcId), dest=tableGroupById(t,destId); if(!src||!dest) return null;
+  const idx=src.cards.findIndex(c=>c.id===cardId); if(idx<0) return null;
+  const moved=src.cards[idx]; const after=src.cards.slice(0,idx).concat(src.cards.slice(idx+1));
+  if(after.length>0 && !(isSet(after)||isRun(after))) return null;
+  if(!canHangOnGroup(moved,dest)) return null;
+  src.cards.splice(idx,1); dest.cards.push(moved);
+  if(src.cards.length===0){ const pos=t.indexOf(src); if(pos>=0) t.splice(pos,1); }
+  return t;
+}
+function simulateTakeToNewGroupWithTwoHand(table, srcId, cardId, handCards){
+  // Solo valida mesa; contar cartas de mano lo hace el motor
+  const t=copyTable(table);
+  const src=tableGroupById(t, srcId); if(!src) return null;
+  const idx=src.cards.findIndex(c=>c.id===cardId); if(idx<0) return null;
+  // Chequear que sea legal tomarla
+  const groupReal=tableGroupById(state.table, srcId); // para usar reglas exactas actuales
+  const idxReal=groupReal.cards.findIndex(c=>c.id===cardId);
+  if(!canTakeFromGroup(groupReal, idxReal)) return null;
+  const taken=src.cards[idx]; src.cards.splice(idx,1);
+  // Construye hipotético grupo
+  const trio=[taken, ...handCards];
+  if(!(isSet(trio)||isRun(trio))) return null;
+  t.push({id:'sim_'+Math.random().toString(36).slice(2,7), cards:trio});
+  if(src.cards.length===0){ const pos=t.indexOf(src); if(pos>=0) t.splice(pos,1); }
+  return t;
+}
+function findPlanToEnableCard(card, hand){
+  // Si ya cuelga, no hace falta plan
+  if(anyGroupAccepts(card)) return null;
+  const table=state.table;
+  // 1) mover una carta entre grupos para habilitar
+  for(const src of table){
+    for(const c of src.cards){
+      const idx=src.cards.findIndex(x=>x.id===c.id); if(idx<0) continue;
+      if(!groupValidAfterRemoval(src, idx)) continue;
+      for(const dest of table){ if(dest.id===src.id) continue; if(!canHangOnGroup(c,dest)) continue;
+        const t2=simulateMove(table, src.id, c.id, dest.id); if(!t2) continue;
+        if(anyGroupAccepts(card, t2)) return {type:'move', srcId:src.id, cardId:c.id, destId:dest.id};
+      }
+    }
+  }
+  // 2) tomar de mesa (extremo o set>=4) y colgarla en otro grupo, luego colgar card
+  for(const src of table){
+    for(let i=0;i<src.cards.length;i++){
+      if(!canTakeFromGroup(src, i)) continue; const taken=src.cards[i];
+      for(const dest of table){ if(dest.id===src.id) continue; if(!canHangOnGroup(taken,dest)) continue;
+        const t2=simulateMove(table, src.id, taken.id, dest.id); if(!t2) continue;
+        if(anyGroupAccepts(card, t2)) return {type:'move', srcId:src.id, cardId:taken.id, destId:dest.id};
+      }
+    }
+  }
+  // 3) tomar de mesa y formar nuevo grupo con dos de la mano (reduce 2 de mano)
+  if(turn.playedFromHand<=1){
+    for(const src of table){
+      for(let i=0;i<src.cards.length;i++){
+        if(!canTakeFromGroup(src, i)) continue; const taken=src.cards[i];
+        for(let a=0;a<hand.length-1;a++){
+          for(let b=a+1;b<hand.length;b++){
+            const A=hand[a], B=hand[b]; if(A.id===card.id||B.id===card.id) continue;
+            const t2=simulateTakeToNewGroupWithTwoHand(table, src.id, taken.id, [A,B]);
+            if(t2){ return {type:'newGroupFromTaken', srcId:src.id, cardId:taken.id, handA:A.id, handB:B.id}; }
+          }
+        }
       }
     }
   }
   return null;
 }
-function groupValidAfterRemoval(group, idx){ const after=group.cards.slice(0,idx).concat(group.cards.slice(idx+1)); if(after.length===0) return true; return isSet(after)||isRun(after); }
+function executePlan(plan, p){
+  if(!plan) return false;
+  if(plan.type==='move'){
+    const src=state.table.find(g=>g.id===plan.srcId); const dest=state.table.find(g=>g.id===plan.destId); if(!src||!dest) return false;
+    const idx=src.cards.findIndex(c=>c.id===plan.cardId); if(idx<0) return false; const moved=src.cards[idx];
+    const after=src.cards.slice(0,idx).concat(src.cards.slice(idx+1)); if(after.length>0 && !(isSet(after)||isRun(after))) return false;
+    if(!canHangOnGroup(moved,dest)) return false;
+    src.cards.splice(idx,1); dest.cards.push(moved); if(src.cards.length===0){ state.table=state.table.filter(g=>g!==src); }
+    log(`${p.name} (CPU) reacomoda ${moved.rank}${moved.suit}.`);
+    return true;
+  }
+  if(plan.type==='newGroupFromTaken'){
+    const src=state.table.find(g=>g.id===plan.srcId); if(!src) return false;
+    const idx=src.cards.findIndex(c=>c.id===plan.cardId); if(idx<0) return false; const taken=src.cards[idx];
+    // validar tomar
+    const idxReal=idx; if(!canTakeFromGroup(src, idxReal)) return false;
+    const Aidx=p.hand.findIndex(x=>x.id===plan.handA); const Bidx=p.hand.findIndex(x=>x.id===plan.handB);
+    if(Aidx<0||Bidx<0) return false; const A=p.hand[Aidx], B=p.hand[Bidx];
+    const combo=[taken,A,B]; if(!(isSet(combo)||isRun(combo))) return false;
+    // ejecutar
+    src.cards.splice(idx,1);
+    const first=Math.max(Aidx,Bidx), second=Math.min(Aidx,Bidx);
+    p.hand.splice(first,1); p.hand.splice(second,1);
+    state.table.push({id:'g'+(groupSeq++), cards:[taken,A,B]});
+    turn.playedFromHand+=2;
+    log(`${p.name} (CPU) arma grupo usando carta de mesa + 2 de mano.`);
+    if(src.cards.length===0){ state.table=state.table.filter(g=>g!==src); }
+    return true;
+  }
+  return false;
+}
 function cpuPlay(){
   const p=state.players[state.current]; if(!p.ai) return;
-  if(!p.entered){ const combo=handCombos(p.hand); if(combo){ state.table.push({id:'g'+(groupSeq++), cards:combo}); p.hand=p.hand.filter(c=>!combo.includes(c)); p.entered=true; turn.playedFromHand+=3; log(`${p.name} (CPU) entra con un grupo.`); }
-  }
-  let safety=20; let progressed=true;
-  while(safety-->0 && progressed){
+  // 1) Entrar si aún no entró (elige el primer combo válido)
+  if(!p.entered){ const combos=handCombos(p.hand); if(combos.length){ const combo=combos[0]; state.table.push({id:'g'+(groupSeq++), cards:combo}); p.hand=p.hand.filter(c=>!combo.includes(c)); p.entered=true; turn.playedFromHand+=3; log(`${p.name} (CPU) entra con un grupo.`); renderAll(); if(p.hand.length===0){ showGranny('¡Para la próxima moñoño!', false); return; } } }
+  let progressed=true, safety=50;
+  while(progressed && safety-->0){
     progressed=false;
+    // 2) colgar directo desde mano
     for(let h=0; h<p.hand.length && turn.playedFromHand<3; h++){
       const card=p.hand[h];
-      for(const g of state.table){ if(canHangOnGroup(card,g)){ g.cards.push(card); p.hand.splice(h,1); h--; turn.playedFromHand++; progressed=true; log(`${p.name} (CPU) cuelga ${card.rank}${card.suit}.`); break; } }
+      for(const g of state.table){ if(canHangOnGroup(card,g)){ g.cards.push(card); p.hand.splice(h,1); h--; turn.playedFromHand++; progressed=true; log(`${p.name} (CPU) cuelga ${card.rank}${card.suit}.`); renderAll(); if(p.hand.length===0){ showGranny('¡Para la próxima moñoño!', false); return; } break; } }
     }
     if(progressed) continue;
-    outerMove:
-    for(let gi=0; gi<state.table.length; gi++){
-      const g=state.table[gi];
-      for(let ci=0; ci<g.cards.length; ci++){
-        const card=g.cards[ci];
-        for(let gj=0; gj<state.table.length; gj++){
-          if(gi===gj) continue; const dest=state.table[gj];
-          if(!groupValidAfterRemoval(g, ci)) continue;
-          if(canHangOnGroup(card,dest)){
-            g.cards.splice(ci,1); dest.cards.push(card); if(g.cards.length===0){ state.table.splice(gi,1); }
-            progressed=true; log(`${p.name} (CPU) reacomoda ${card.rank}${card.suit}.`);
-            break outerMove;
+    // 3) plan: reacomodar mesa para habilitar colgada de alguna carta de mano
+    if(turn.playedFromHand<3){
+      let used=false;
+      for(let h=0; h<p.hand.length && !used; h++){
+        const card=p.hand[h]; if(anyGroupAccepts(card)) continue; // ya lo cubriría el paso 2
+        const plan=findPlanToEnableCard(card, p.hand);
+        if(plan){
+          const ok=executePlan(plan, p); if(ok){
+            // tras ejecutar, intenta colgar la carta objetivo
+            for(const g of state.table){ if(canHangOnGroup(card,g)){ g.cards.push(card); p.hand.splice(h,1); turn.playedFromHand++; used=true; progressed=true; log(`${p.name} (CPU) cuelga ${card.rank}${card.suit} tras reacomodar.`); renderAll(); if(p.hand.length===0){ showGranny('¡Para la próxima moñoño!', false); return; } break; } }
           }
         }
       }
+      if(progressed) continue;
     }
-    if(progressed) continue;
-    takeLoop:
-    for(let gi=0; gi<state.table.length; gi++){
-      const g=state.table[gi];
-      const candidates=[];
-      if(isRun(g.cards)){
-        const seq=findRunSequence(g.cards); if(seq){ const ends=[seq[0], seq[seq.length-1]]; for(const endRank of ends){ const ci=g.cards.findIndex(c=>c.rank===endRank); if(ci>=0 && groupValidAfterRemoval(g, ci)) candidates.push({idx:ci,card:g.cards[ci]}); } }
-      } else if(isSet(g.cards) && g.cards.length>=4){
-        for(let ci=0; ci<g.cards.length; ci++) if(groupValidAfterRemoval(g, ci)) candidates.push({idx:ci,card:g.cards[ci]});
-      }
-      for(const cand of candidates){
-        const card=cand.card;
-        for(let gj=0; gj<state.table.length; gj++){
-          if(gj===gi) continue; const dest=state.table[gj];
-          if(canHangOnGroup(card,dest)){
-            const realIdx=g.cards.findIndex(c=>c.id===card.id); if(realIdx<0) continue;
-            g.cards.splice(realIdx,1); dest.cards.push(card); if(g.cards.length===0){ state.table.splice(gi,1); }
-            progressed=true; log(`${p.name} (CPU) toma ${card.rank}${card.suit} y cuelga.`); break takeLoop;
-          }
-        }
-        for(let i=0;i<p.hand.length-1;i++){
-          for(let j=i+1;j<p.hand.length;j++){
-            const combo=[card,p.hand[i],p.hand[j]];
-            if((isSet(combo)||isRun(combo)) && turn.playedFromHand+2<=3){
-              const realIdx=g.cards.findIndex(c=>c.id===card.id); if(realIdx<0) continue;
-              const a=p.hand[i], b=p.hand[j];
-              g.cards.splice(realIdx,1);
-              const idxA=p.hand.findIndex(x=>x.id===a.id), idxB=p.hand.findIndex(x=>x.id===b.id);
-              const first=Math.max(idxA,idxB), second=Math.min(idxA,idxB);
-              p.hand.splice(first,1); p.hand.splice(second,1);
-              state.table.push({id:'g'+(groupSeq++), cards:[card,a,b]});
-              turn.playedFromHand+=2; progressed=true; log(`${p.name} (CPU) arma grupo con carta tomada.`);
-              if(g.cards.length===0){ state.table.splice(gi,1); }
-              break takeLoop;
+    // 4) Si aún queda margen (<=1 carta desde mano), intentar crear grupo con carta tomada + 2 de mano
+    if(turn.playedFromHand<=1){
+      outer:
+      for(const src of state.table){
+        for(let i=0;i<src.cards.length;i++){
+          if(!canTakeFromGroup(src,i)) continue; const taken=src.cards[i];
+          for(let a=0;a<p.hand.length-1;a++){
+            for(let b=a+1;b<p.hand.length;b++){
+              const A=p.hand[a], B=p.hand[b]; const combo=[taken,A,B];
+              if((isSet(combo)||isRun(combo)) && turn.playedFromHand+2<=3){
+                // ejecutar real
+                src.cards.splice(i,1);
+                const first=Math.max(a,b), second=Math.min(a,b);
+                p.hand.splice(first,1); p.hand.splice(second,1);
+                state.table.push({id:'g'+(groupSeq++), cards:[taken,A,B]});
+                turn.playedFromHand+=2; progressed=true; log(`${p.name} (CPU) arma nuevo grupo (mesa+2 mano).`); renderAll(); if(src.cards.length===0){ state.table=state.table.filter(g=>g!==src); }
+                break outer;
+              }
             }
           }
         }
@@ -377,7 +474,6 @@ function cpuPlay(){
   if(turn.playedFromHand===0){ const c=state.deck.pop(); if(c){ p.hand.push(c); log(`${p.name} (CPU) roba.`); } }
   nextTurn();
 }
-
 // ====== Win/Lose ======
 function checkWin(p){ if(p.hand.length===0){ if(!p.ai){ showGranny('¡Felicidades Moñoño!', true); } else { showGranny('¡Para la próxima moñoño!', false); } } }
 
@@ -391,3 +487,4 @@ if(document.readyState==='loading'){
 </script>
 </body>
 </html>
+
